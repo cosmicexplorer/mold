@@ -431,15 +431,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mach-o-linker"
-version = "0.0.1"
-dependencies = [
- "bfd 0.0.1",
- "bindgen 0.33.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "byteorder 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "matches"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

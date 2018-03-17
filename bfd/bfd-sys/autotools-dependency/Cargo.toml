@@ -1,11 +1,10 @@
 [package]
-name = "mach-o-linker"
+name = "autotools-dependency"
 version = "0.0.1"
 authors = ["Daniel McClanahan <1305167+cosmicexplorer@users.noreply.github.com>"]
 
 [dependencies]
-bfd = { path = "bfd" }
-byteorder = "1"
-
-[build-dependencies]
-bindgen = "0.33.0"
+reqwest = "0.8"
+pathdiff = "0.1"
+tar = "0.4"
+tempdir = "0.3"
