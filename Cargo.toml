@@ -3,4 +3,8 @@ name = "mach-o-linker"
 version = "0.1.0"
 authors = ["Daniel McClanahan <1305167+cosmicexplorer@users.noreply.github.com>"]
 
+[build-dependencies]
+bindgen = "0.33.2"
+
 [dependencies]
+byteorder = "1"
