@@ -5,7 +5,7 @@ use std::fs::File;
 
 fn main() {
   unsafe {
-    // Should really be using std::sync::Once, but I can't get it to compile.
+    // Should probably be using std::sync::Once, but I can't get it to compile.
     bfd::init();
   }
   let filename = env::args().nth(1).unwrap();
