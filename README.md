@@ -1,7 +1,7 @@
 `mold` (Mach-O ld)
 ==================
 
-`mold` is a linker emulating OSX `ld` written in Rust to support linking 64-bit Mach-O files using the [GNU bfd library](https://ftp.gnu.org/old-gnu/Manuals/bfd-2.9.1/html_chapter/bfd_2.html).
+`mold` is a linker emulating OSX `ld` written in Rust to support linking 64-bit Mach-O files using the [GNU bfd library](https://ftp.gnu.org/old-gnu/Manuals/bfd-2.9.1/html_chapter/bfd_2.html). `mold` is licensed under the [Apache 2.0 license](./LICENSE).
 
 # Progress
 ## Hello, World!
@@ -17,6 +17,9 @@ hello, world!
 (see [`lib::make_executable()`](./src/lib.rs))
 
 # Arguments
+
+*Note:* make `-h`/`--help` usable like any other normal cli tool!!!!
+
 ## File/Path
 - [ ] `-o <path>`
 - [ ] `-l<name>`

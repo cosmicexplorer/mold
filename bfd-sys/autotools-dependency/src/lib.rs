@@ -85,12 +85,14 @@ impl From<io::Error> for BuildError {
   }
 }
 
+pub type BuildResult = Result<ExitStatus, BuildError>;
+
 fn run_command(
   exe_name_or_path: &Path,
   argv_not_first: &Vec<String>,
   cwd: &Path,
   vars: &HashMap<String, String>,
-) -> Result<ExitStatus, BuildError> {
+) -> BuildResult {
   let cmd_str: String = argv_not_first.iter().fold(
     String::from(exe_name_or_path.to_str().unwrap()),
     |cmd, arg| format!("{} {}", cmd, arg),
@@ -116,12 +118,11 @@ fn run_command(
 }
 
 pub fn run_configure(
-  prefix_dir: &Path,
   build_dir: &Path,
   source_dir: &Path,
   args: &Vec<String>,
   vars: &HashMap<String, String>,
-) -> Result<ExitStatus, BuildError> {
+) -> BuildResult {
   let abs_path_to_source: PathBuf = fs::canonicalize(&source_dir)?;
   eprintln!("abs_path_to_source: {:?}", abs_path_to_source);
   let configure_path: PathBuf =
@@ -129,14 +130,9 @@ pub fn run_configure(
       .iter()
       .collect();
   eprintln!("configure_path: {:?}", configure_path);
-  let mut all_configure_args = args.clone();
-  all_configure_args.append(&mut vec![
-    String::from("--prefix"),
-    String::from(prefix_dir.to_str().unwrap()),
-  ]);
   Ok(run_command(
     &configure_path,
-    &all_configure_args,
+    &args,
     &build_dir,
     &vars,
   )?)
@@ -147,7 +143,7 @@ pub fn run_make(
   args: &Vec<String>,
   vars: &HashMap<String, String>,
   parallelism: u8,
-) -> Result<ExitStatus, BuildError> {
+) -> BuildResult {
   let mut all_make_args = args.clone();
   all_make_args.insert(0, format!("-j{}", parallelism.to_string()));
   Ok(run_command(
@@ -182,22 +178,26 @@ impl From<io::Error> for BuildAutotoolsDependencyError {
   }
 }
 
+pub struct FetchedAutotoolsDep {
+  pub build_dir: PathBuf,
+}
+
+pub type BuildAutotoolsResult =
+  Result<FetchedAutotoolsDep, BuildAutotoolsDependencyError>;
+
 pub fn build_local_autotools_dep(
   src_dir: &Path,
   build_dir: &Path,
-  outdir: &Path,
   configure_args: Vec<String>,
   env_vars: HashMap<String, String>,
   parallelism: u8,
-) -> Result<PathBuf, BuildAutotoolsDependencyError> {
+) -> BuildAutotoolsResult {
   let src_dir_abs = fs::canonicalize(src_dir)?;
   let build_dir_abs = fs::canonicalize(build_dir)?;
-  let outdir_abs = fs::canonicalize(outdir)?;
 
   // run configure script from source dir, in build dir, and set prefix outdir
   eprintln!("running configure...");
   run_configure(
-    &outdir_abs,
     &build_dir_abs,
     &src_dir_abs,
     &configure_args,
@@ -208,46 +208,35 @@ pub fn build_local_autotools_dep(
   eprintln!("running make...");
   run_make(&build_dir, &vec![], &env_vars, parallelism)?;
 
-  // install to outdir
-  eprintln!("running make install...");
-  run_make(
-    &build_dir,
-    &vec![String::from("install")],
-    &env_vars,
-    parallelism,
-  )?;
-
-  Ok(outdir_abs)
+  Ok(FetchedAutotoolsDep {
+    build_dir: build_dir_abs.to_path_buf(),
+  })
 }
 
 pub fn fetch_build_autotools_dep(
   url: &str,
-  outdir: &Path,
+  build_dir: &Path,
+  extract_dir: &Path,
   src_dirname: &Path,
   configure_args: Vec<String>,
   env_vars: HashMap<String, String>,
   timeout: time::Duration,
   parallelism: u8,
-) -> Result<PathBuf, BuildAutotoolsDependencyError> {
-  let outdir_abs = fs::canonicalize(&outdir)?;
-  let tmp_dl_dir = TempDir::new("autotools-dl")?;
-  let dl_dir_abs = fs::canonicalize(tmp_dl_dir.path())?;
-  eprintln!("dl_dir: {:?}", dl_dir_abs);
+) -> BuildAutotoolsResult {
+  let build_dir_abs = fs::canonicalize(&build_dir)?;
+  let extract_dir_abs = fs::canonicalize(&extract_dir)?;
 
-  fetch_and_extract(&url, dl_dir_abs.as_path(), timeout)?;
+  fetch_and_extract(&url, extract_dir_abs.as_path(), timeout)?;
   let downloaded_source_abs = fs::canonicalize(
-    [dl_dir_abs.as_path(), src_dirname].iter().collect(): PathBuf,
+    [extract_dir_abs.as_path(), src_dirname].iter().collect(): PathBuf,
   )?;
   eprintln!("downloaded_source_abs: {:?}", downloaded_source_abs);
 
-  let tmp_build_dir = TempDir::new("autotools-build")?;
-  let build_dir_abs = fs::canonicalize(tmp_build_dir.path())?;
   eprintln!("build_dir_abs: {:?}", build_dir_abs);
 
   build_local_autotools_dep(
     downloaded_source_abs.as_path(),
     build_dir_abs.as_path(),
-    outdir_abs.as_path(),
     configure_args,
     env_vars,
     parallelism,
