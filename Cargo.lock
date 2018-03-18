@@ -531,6 +531,7 @@ name = "mold"
 version = "0.0.1"
 dependencies = [
  "bfd-sys 0.1.0",
+ "libc 0.2.39 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

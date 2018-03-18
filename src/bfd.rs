@@ -1,4 +1,5 @@
 extern crate bfd_sys;
+extern crate libc;
 
 use self::bfd_sys::{bfd, bfd_link_info, bfd_target};
 
@@ -194,13 +195,36 @@ pub fn get_target(target_name: &str) -> Result<String> {
   }
 }
 
+unsafe fn array_of_c_string_to_vec(arr: *const *const c_char) -> Vec<String> {
+  let mut str_vec: Vec<String> = Vec::new();
+
+  if arr.is_null() {
+    return str_vec;
+  }
+
+  for i in 0.. {
+    let cur_c_str: &*const c_char = &*arr.offset(i);
+    if cur_c_str.is_null() {
+      break;
+    } else {
+      let cur_str: &str = CStr::from_ptr(*cur_c_str).to_str().unwrap();
+      str_vec.push(String::from(cur_str));
+    }
+  }
+
+  str_vec
+}
+
+unsafe fn free<T>(arg: *mut T) {
+  libc::free(arg as *mut libc::c_void);
+}
+
 pub fn get_all_targets() -> Vec<String> {
   let tgt_inits: Vec<String>;
   unsafe {
-    let tgts: *mut *const c_char = bfd_sys::bfd_target_list();
-    let amt: usize = 10;
-    let tgt_slice: &[*const c_char] = slice::from_raw_parts(tgts, amt);
-    tgt_inits = tgt_slice.iter().map(|&s| CStr::from_ptr(s).to_str().unwrap().to_owned()).collect();
+    let target_listing: *mut *const c_char = bfd_sys::bfd_target_list();
+    tgt_inits = array_of_c_string_to_vec(target_listing);
+    free(target_listing);
   }
   tgt_inits
 }
