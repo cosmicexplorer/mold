@@ -6,3 +6,4 @@ links = "bfd"
 
 [build-dependencies]
 autotools-dependency = { path = "autotools-dependency" }
+bindgen = "0.33.0"
