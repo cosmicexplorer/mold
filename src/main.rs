@@ -1,4 +1,5 @@
 mod bfd;
+mod lib;
 
 use std::env;
 use std::fs::File;

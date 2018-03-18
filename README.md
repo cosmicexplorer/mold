@@ -4,7 +4,17 @@
 `mold` is a linker emulating OSX `ld` written in Rust to support linking 64-bit Mach-O files using the [GNU bfd library](https://ftp.gnu.org/old-gnu/Manuals/bfd-2.9.1/html_chapter/bfd_2.html).
 
 # Progress
+## Hello, World!
 
+In an OSX High Sierra environment:
+``` bash
+> /usr/bin/clang -c test.c -fno-lto
+> ld -execute -arch x86_64 -macosx_version_min 10.13.0 -o test test.o -lSystem /Library/Developer/CommandLineTools/usr/lib/clang/9.0.0/lib/darwin/libclang_rt.osx.a
+> ./test
+hello, world!
+```
+
+(see [`lib::make_executable()`](./src/lib.rs))
 
 # Arguments
 ## File/Path
