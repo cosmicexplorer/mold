@@ -1,7 +1,7 @@
-mach-o-linker
-=============
+`mold` (Mach-O ld)
+==================
 
-Linker for 64-bit Mach-O files.
+`mold` is a linker emulating OSX `ld` written in Rust to support linking 64-bit Mach-O files.
 
 # Links
 - [Apple Mach-O docs](https://developer.apple.com/library/content/documentation/DeveloperTools/Conceptual/MachOTopics/0-Introduction/introduction.html)

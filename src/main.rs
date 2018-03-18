@@ -2,12 +2,10 @@ mod bfd;
 
 use std::env;
 use std::fs::File;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::sync::{Once, ONCE_INIT};
 
 fn main() {
   unsafe {
+    // Should really be using std::sync::Once, but I can't get it to compile.
     bfd::init();
   }
   let filename = env::args().nth(1).unwrap();

@@ -443,13 +443,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mach-o-linker"
-version = "0.0.1"
-dependencies = [
- "bfd-sys 0.1.0",
-]
-
-[[package]]
 name = "matches"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,6 +523,13 @@ dependencies = [
  "net2 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "ws2_32-sys 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mold"
+version = "0.0.1"
+dependencies = [
+ "bfd-sys 0.1.0",
 ]
 
 [[package]]

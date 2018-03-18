@@ -1,5 +1,5 @@
 [package]
-name = "mach-o-linker"
+name = "mold"
 version = "0.0.1"
 authors = ["Daniel McClanahan <1305167+cosmicexplorer@users.noreply.github.com>"]
 
