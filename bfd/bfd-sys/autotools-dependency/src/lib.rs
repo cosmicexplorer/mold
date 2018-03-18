@@ -45,10 +45,11 @@ impl From<reqwest::UrlError> for FetchError {
 
 pub fn fetch_decompress(
   url_str: &str,
+  timeout: time::Duration,
 ) -> Result<GzDecoder<reqwest::Response>, FetchError> {
   eprintln!("downloading .tar.gz file from '{}'...", url_str);
   let client = reqwest::Client::builder()
-    .timeout(time::Duration::new(120, 0))
+    .timeout(timeout)
     .gzip(true)
     .build()?;
   let parsed_url = reqwest::Url::parse(&url_str)?;
@@ -64,9 +65,10 @@ pub fn extract_into<T: Read>(stream: T, dest_dir: &Path) -> io::Result<()> {
 pub fn fetch_and_extract(
   url: &str,
   dest_dir: &Path,
+  timeout: time::Duration,
 ) -> Result<(), FetchError> {
-  let gz_stream = fetch_decompress(&url)?;
-  eprintln!("extracting from response stream into '{:?}'...", dest_dir);
+  let gz_stream = fetch_decompress(&url, timeout)?;
+  eprintln!("extracting from response stream into {:?}...", dest_dir);
   extract_into(gz_stream, dest_dir)?;
   Ok(())
 }
@@ -84,16 +86,16 @@ impl From<io::Error> for BuildError {
 }
 
 fn run_command(
-  exe_name_or_path: &PathBuf,
+  exe_name_or_path: &Path,
   argv_not_first: &Vec<String>,
-  cwd: &PathBuf,
+  cwd: &Path,
   vars: &HashMap<String, String>,
 ) -> Result<ExitStatus, BuildError> {
   let cmd_str: String = argv_not_first.iter().fold(
     String::from(exe_name_or_path.to_str().unwrap()),
     |cmd, arg| format!("{} {}", cmd, arg),
   );
-  eprintln!("running command '{}'", cmd_str);
+  eprintln!("running command (in cwd {:?}) '{}'", cwd, cmd_str);
   let mut subproc: process::Child = Command::new(exe_name_or_path)
     .args(argv_not_first)
     .current_dir(cwd)
@@ -114,15 +116,16 @@ fn run_command(
 }
 
 pub fn run_configure(
-  prefix_dir: &PathBuf,
-  build_dir: &PathBuf,
-  source_dir: &PathBuf,
+  prefix_dir: &Path,
+  build_dir: &Path,
+  source_dir: &Path,
   args: &Vec<String>,
   vars: &HashMap<String, String>,
 ) -> Result<ExitStatus, BuildError> {
   let abs_path_to_source: PathBuf = fs::canonicalize(&source_dir)?;
+  eprintln!("abs_path_to_source: {:?}", abs_path_to_source);
   let configure_path: PathBuf =
-    [abs_path_to_source, PathBuf::from("configure")]
+    [abs_path_to_source.as_path(), Path::new("configure")]
       .iter()
       .collect();
   eprintln!("configure_path: {:?}", configure_path);
@@ -140,7 +143,7 @@ pub fn run_configure(
 }
 
 pub fn run_make(
-  cwd: &PathBuf,
+  cwd: &Path,
   args: &Vec<String>,
   vars: &HashMap<String, String>,
   parallelism: u8,
@@ -148,7 +151,7 @@ pub fn run_make(
   let mut all_make_args = args.clone();
   all_make_args.insert(0, format!("-j{}", parallelism.to_string()));
   Ok(run_command(
-    &PathBuf::from("make"),
+    &Path::new("make"),
     &all_make_args,
     &cwd,
     &vars,
@@ -179,32 +182,24 @@ impl From<io::Error> for BuildAutotoolsDependencyError {
   }
 }
 
-pub fn fetch_build_autotools_dep(
-  url: &str,
+pub fn build_local_autotools_dep(
+  src_dir: &Path,
+  build_dir: &Path,
   outdir: &Path,
-  src_dirname: &Path,
   configure_args: Vec<String>,
   env_vars: HashMap<String, String>,
   parallelism: u8,
 ) -> Result<PathBuf, BuildAutotoolsDependencyError> {
-  let outdir_abs = fs::canonicalize(&outdir)?;
-  let dl_dir = TempDir::new("autotools-dl")?.path().to_path_buf();
-  eprintln!("dl_dir: {:?}", dl_dir);
-
-  fetch_and_extract(&url, dl_dir.as_path())?;
-  let downloaded_source_abs =
-    fs::canonicalize([dl_dir.as_path(), src_dirname].iter().collect(): PathBuf)?;
-  eprintln!("downloaded_source_abs: {:?}", downloaded_source_abs);
-
-  let build_dir = TempDir::new("autotools-build")?.path().to_path_buf();
-  eprintln!("build_dir: {:?}", build_dir);
+  let src_dir_abs = fs::canonicalize(src_dir)?;
+  let build_dir_abs = fs::canonicalize(build_dir)?;
+  let outdir_abs = fs::canonicalize(outdir)?;
 
   // run configure script from source dir, in build dir, and set prefix outdir
   eprintln!("running configure...");
   run_configure(
     &outdir_abs,
-    &build_dir,
-    &downloaded_source_abs,
+    &build_dir_abs,
+    &src_dir_abs,
     &configure_args,
     &env_vars,
   )?;
@@ -221,7 +216,42 @@ pub fn fetch_build_autotools_dep(
     &env_vars,
     parallelism,
   )?;
+
   Ok(outdir_abs)
+}
+
+pub fn fetch_build_autotools_dep(
+  url: &str,
+  outdir: &Path,
+  src_dirname: &Path,
+  configure_args: Vec<String>,
+  env_vars: HashMap<String, String>,
+  timeout: time::Duration,
+  parallelism: u8,
+) -> Result<PathBuf, BuildAutotoolsDependencyError> {
+  let outdir_abs = fs::canonicalize(&outdir)?;
+  let tmp_dl_dir = TempDir::new("autotools-dl")?;
+  let dl_dir_abs = fs::canonicalize(tmp_dl_dir.path())?;
+  eprintln!("dl_dir: {:?}", dl_dir_abs);
+
+  fetch_and_extract(&url, dl_dir_abs.as_path(), timeout)?;
+  let downloaded_source_abs = fs::canonicalize(
+    [dl_dir_abs.as_path(), src_dirname].iter().collect(): PathBuf,
+  )?;
+  eprintln!("downloaded_source_abs: {:?}", downloaded_source_abs);
+
+  let tmp_build_dir = TempDir::new("autotools-build")?;
+  let build_dir_abs = fs::canonicalize(tmp_build_dir.path())?;
+  eprintln!("build_dir_abs: {:?}", build_dir_abs);
+
+  build_local_autotools_dep(
+    downloaded_source_abs.as_path(),
+    build_dir_abs.as_path(),
+    outdir_abs.as_path(),
+    configure_args,
+    env_vars,
+    parallelism,
+  )
 }
 
 #[cfg(test)]
