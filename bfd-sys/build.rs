@@ -3,6 +3,7 @@ extern crate bindgen;
 
 use std::collections::HashMap;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time;
 
@@ -14,14 +15,34 @@ fn to_string_vec(args: &[&str]) -> Vec<String> {
   args.iter().map(|s| s.to_string()).collect()
 }
 
+fn file_exists(path: &Path) -> io::Result<bool> {
+  let metadata = fs::metadata(path)?;
+  Ok(metadata.is_file())
+}
+
 fn main() {
+  // Only re-run if anything in src has changed.
+  let src_entries = fs::read_dir(Path::new("src")).unwrap();
+  for entry in src_entries {
+    println!(
+      "cargo:rerun-if-changed={}",
+      entry.unwrap().path().to_str().unwrap()
+    );
+  }
+
   let bfd_binutils_dirname = Path::new("bfd-binutils");
   let binutils_src_dirname = Path::new("binutils-2.30");
 
+  let bfd_hdr_loc: PathBuf = [bfd_binutils_dirname, Path::new("include/bfd.h")]
+    .iter()
+    .collect();
   let bfd_lib_loc: PathBuf = [bfd_binutils_dirname, Path::new("lib/libbfd.a")]
     .iter()
     .collect();
-  let bfd_binutils_dir = if fs::metadata(bfd_lib_loc).unwrap().is_file() {
+  let resources_exist_p: bool = file_exists(bfd_hdr_loc.as_path()).unwrap()
+    && file_exists(bfd_lib_loc.as_path()).unwrap();
+  let bfd_binutils_dir = if resources_exist_p {
+    eprintln!("skipping binutils compilation -- required resources exist");
     fs::canonicalize(bfd_binutils_dirname).unwrap()
   } else {
     fs::DirBuilder::new()
