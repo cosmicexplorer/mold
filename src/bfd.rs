@@ -1,28 +1,35 @@
 extern crate bfd_sys;
 extern crate libc;
 
-use self::bfd_sys::{bfd, bfd_link_info, bfd_target};
+use self::bfd_sys::{bfd, bfd_hash_table, bfd_link_info, bfd_target};
 
 use std::ffi::CStr;
 use std::fmt;
 use std::io;
+use std::mem::size_of;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::slice;
 
+#[derive(Debug)]
 pub enum BFDError {
   // TODO: add error string from bfd's perror-like c api
+  FormatCheckError,
   NullPtrError,
+  IoError(io::Error),
+  LinkError,
+}
+
+impl From<io::Error> for BFDError {
+  fn from(error: io::Error) -> Self {
+    BFDError::IoError(error)
+  }
 }
 
 pub type Error = BFDError;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
-
-pub unsafe fn init() {
-  bfd_sys::bfd_init();
-}
 
 fn str_to_c_char_vec(s: &str) -> Vec<c_char> {
   s.as_bytes().iter().map(|b| *b as c_char).collect()
@@ -87,11 +94,11 @@ pub fn openw<'a>(path: &'a Path, target: &'a str) -> Result<&'a mut bfd> {
 }
 
 #[derive(Debug)]
-pub struct Handle<'a> {
-  bfd: &'a mut bfd,
+pub struct BFDHandle<'a> {
+  pub bfd: &'a mut bfd,
 }
 
-impl<'a> Drop for Handle<'a> {
+impl<'a> Drop for BFDHandle<'a> {
   fn drop(&mut self) {
     unsafe {
       bfd_sys::bfd_close(self.bfd);
@@ -99,34 +106,60 @@ impl<'a> Drop for Handle<'a> {
   }
 }
 
-impl<'a> Handle<'a> {
-  pub fn for_input_obj_file(
-    path: &'a Path,
-    target: &'a str,
-  ) -> Result<Handle<'a>> {
-    let abfd = openr(path, target)?;
+static only_target: &str = "mach-o-x86-64";
+
+impl<'a> BFDHandle<'a> {
+  pub fn for_input_file(path: &'a Path) -> Result<BFDHandle<'a>> {
+    let abfd = openr(path, only_target)?;
+    let format_check_result: bfd_sys::bfd_boolean;
     // FIXME: check errors here!
     unsafe {
-      bfd_sys::bfd_set_format(abfd, bfd_sys::bfd_format_bfd_object);
+      format_check_result =
+        bfd_sys::bfd_check_format(abfd, bfd_sys::bfd_format_bfd_object);
     }
-    Ok(Handle { bfd: abfd })
+    if format_check_result != 0 {
+      Ok(BFDHandle { bfd: abfd })
+    } else {
+      Err(BFDError::FormatCheckError)
+    }
   }
 
-  pub fn for_output_obj_file(
-    path: &'a Path,
-    target: &'a str,
-  ) -> Result<Handle<'a>> {
-    let abfd = openw(path, target)?;
+  pub fn for_output_obj_file(path: &'a Path) -> Result<BFDHandle<'a>> {
+    let abfd = openw(path, only_target)?;
+    let format_set_result: bfd_sys::bfd_boolean;
     // FIXME: check errors here!
     unsafe {
-      bfd_sys::bfd_set_format(abfd, bfd_sys::bfd_format_bfd_object);
+      format_set_result =
+        bfd_sys::bfd_set_format(abfd, bfd_sys::bfd_format_bfd_object);
     }
-    Ok(Handle { bfd: abfd })
+    if format_set_result != 0 {
+      Ok(BFDHandle { bfd: abfd })
+    } else {
+      Err(BFDError::FormatCheckError)
+    }
+  }
+
+  unsafe fn link_hash_table_create(
+    &mut self,
+  ) -> *mut bfd_sys::bfd_link_hash_table {
+    let fun = (*self.bfd.xvec)._bfd_link_hash_table_create.unwrap();
+    fun(self.bfd)
+  }
+
+  unsafe fn final_link(&mut self, link_info: &mut bfd_link_info) -> bool {
+    eprintln!("final_link: 1");
+    let fun = (*self.bfd.xvec)._bfd_final_link.unwrap();
+    eprintln!("final_link: 2");
+    fun(self.bfd, link_info) != 0
   }
 
   fn target(&self) -> Option<&bfd_target> {
     ptr_opt(self.bfd.xvec)
   }
+}
+
+pub struct LinkProcess {
+  link_info: bfd_link_info,
 }
 
 fn unix_link_info() -> bfd_link_info {
@@ -136,10 +169,6 @@ fn unix_link_info() -> bfd_link_info {
   }
 }
 
-pub struct LinkProcess {
-  link_info: bfd_link_info,
-}
-
 impl LinkProcess {
   pub fn new() -> Self {
     LinkProcess {
@@ -147,7 +176,7 @@ impl LinkProcess {
     }
   }
 
-  pub fn add_symbols<'b>(&mut self, other: Handle<'b>) -> bool {
+  pub fn add_symbols<'b>(&mut self, other: BFDHandle<'b>) -> bool {
     let add_sym_fun = other.target().unwrap()._bfd_link_add_symbols.unwrap();
     unsafe {
       // TODO: is this conversion checked? should we check whether the return
@@ -161,15 +190,52 @@ impl LinkProcess {
 // Produce a mach-o main executable that has file type MH_EXECUTE.
 pub fn make_executable<'a>(
   object_path: &Path,
-  clang_rt: &Path,
-  target: &str,
+  // clang_rt: &Path,
   out_path: &'a Path,
-) -> io::Result<&'a Path> {
+) -> Result<&'a Path> {
+  eprintln!("1");
+  let mut tbl = bfd_hash_table {
+    ..Default::default()
+  };
+  unsafe {
+    bfd_sys::bfd_hash_table_init(
+      &mut tbl,
+      Some(bfd_sys::bfd_hash_newfunc),
+      size_of::<bfd_sys::bfd_hash_entry>() as u32,
+    );
+  }
+  eprintln!("2");
+
   // Create the output object file.
-  let obj_out = Handle::for_output_obj_file(out_path, target);
+  let mut obj_out = BFDHandle::for_output_obj_file(out_path)?;
+
+  eprintln!("3");
+
+  let mut link_info: bfd_link_info;
+  unsafe {
+    link_info = bfd_link_info {
+      output_bfd: obj_out.bfd,
+      hash: obj_out.link_hash_table_create(),
+      ..Default::default()
+    };
+    link_info.input_bfds_tail = &mut link_info.input_bfds;
+  };
+  eprintln!("4");
   // Read in the input object file.
-  let obj_in = Handle::for_input_obj_file(object_path, target);
+  let obj_in = BFDHandle::for_input_file(object_path)?;
+  eprintln!("5");
   // Add symbols from the input object file.
+  unsafe {
+    eprintln!("5.1");
+    (*link_info.input_bfds_tail) = obj_in.bfd;
+    eprintln!("5.2");
+    link_info.input_bfds_tail = &mut obj_in.bfd.link.next;
+    eprintln!("5.3");
+    if !obj_out.final_link(&mut link_info) {
+      return Err(BFDError::LinkError);
+    }
+  }
+  eprintln!("6");
 
   // Add symbols from the -lSystem library.
   // Add symbols from the clang runtime archive libclang_rt.osx.a.
@@ -195,7 +261,9 @@ pub fn get_target(target_name: &str) -> Result<String> {
   }
 }
 
-unsafe fn array_of_c_string_to_vec(arr: *const *const c_char) -> Vec<String> {
+unsafe fn null_term_array_of_c_string_to_vec(
+  arr: *const *const c_char,
+) -> Vec<String> {
   let mut str_vec: Vec<String> = Vec::new();
 
   if arr.is_null() {
@@ -223,7 +291,7 @@ pub fn get_all_targets() -> Vec<String> {
   let tgt_inits: Vec<String>;
   unsafe {
     let target_listing: *mut *const c_char = bfd_sys::bfd_target_list();
-    tgt_inits = array_of_c_string_to_vec(target_listing);
+    tgt_inits = null_term_array_of_c_string_to_vec(target_listing);
     free(target_listing);
   }
   tgt_inits
