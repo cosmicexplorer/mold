@@ -1,7 +1,9 @@
 `mold` (Mach-O ld)
 ==================
 
-`mold` is a linker emulating OSX `ld` written in Rust to support linking 64-bit Mach-O files using the [GNU bfd library](https://ftp.gnu.org/old-gnu/Manuals/bfd-2.9.1/html_chapter/bfd_2.html). `mold` is licensed under the [Apache 2.0 license](./LICENSE).
+`mold` is a linker emulating OSX `ld` written in Rust to support linking 64-bit Mach-O files. `mold` is licensed under the [Apache 2.0 license](./LICENSE).
+
+*Note: the [GNU bfd library](https://ftp.gnu.org/old-gnu/Manuals/bfd-2.9.1/html_chapter/bfd_2.html) does not support Mach-O and doesn't seem likely to anytime soon or ever. See [this SHA](https://github.com/cosmicexplorer/mold/tree/836dd6fe00b116aa1a7796cad4b3a61cbbb2f2ef) for what might have actually worked if so.*
 
 # Progress
 ## Hello, World!
