@@ -40,6 +40,8 @@ hello, world!
 # Links
 - [Apple Mach-O docs](https://developer.apple.com/library/content/documentation/DeveloperTools/Conceptual/MachOTopics/0-Introduction/introduction.html)
 - [Mach-O file parsing walkthrough](https://lowlevelbits.org/parsing-mach-o-files/)
+- [Mach-O file format reference from this github repo](https://github.com/aidansteele/osx-abi-macho-file-format-reference)
+- [Mach-O on wikipedia](https://en.wikipedia.org/wiki/Mach-O)
 
 # License
 - [Apache 2.0](./LICENSE)
